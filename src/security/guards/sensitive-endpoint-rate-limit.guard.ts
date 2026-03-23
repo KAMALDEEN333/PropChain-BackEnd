@@ -110,6 +110,9 @@ export class SensitiveEndpointRateLimitGuard implements CanActivate {
 
   private async getExcessAttempts(key: string, config: any): Promise<number> {
     const info = await this.rateLimitingService.getRateLimitInfo(key, config);
+    if (!info) {
+      return 1;
+    }
     return Math.max(0, config.maxRequests - info.remaining);
   }
 

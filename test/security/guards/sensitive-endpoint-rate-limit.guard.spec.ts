@@ -131,7 +131,7 @@ describe('SensitiveEndpointRateLimitGuard', () => {
           window: 60000,
         },
       });
-      reflector.get.mockReturnValue(undefined);
+      reflector.get.mockReturnValue({ enableProgressiveDelay: false });
 
       await expect(guard.canActivate(context)).rejects.toThrow(HttpException);
       await expect(guard.canActivate(context)).rejects.toThrow(/Too many requests/);
