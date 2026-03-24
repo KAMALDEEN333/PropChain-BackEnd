@@ -15,6 +15,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@ne
 import { Request } from 'express';
 import { ErrorResponseDto } from '../common/errors/error.dto';
 import { ApiStandardErrorResponse } from '../common/errors/api-standard-error-response.decorator';
+import { SensitiveEndpointRateLimitGuard } from '../security/guards/sensitive-endpoint-rate-limit.guard';
+import { SensitiveRateLimit } from '../security/decorators/sensitive-rate-limit.decorator';
 
 /**
  * AuthController
@@ -151,9 +153,17 @@ export class AuthController {
    * @returns {Promise<{access_token: string, refresh_token: string}>} New token pair
    */
   @Post('refresh-token')
+  @UseGuards(SensitiveEndpointRateLimitGuard)
+  @SensitiveRateLimit({
+    windowMs: 60000,
+    maxRequests: 10,
+    keyPrefix: 'token_refresh',
+    enableProgressiveDelay: false,
+    blockOnExceed: false,
+  })
   @ApiOperation({
     summary: 'Refresh access token',
-    description: 'Exchanges refresh token for new access token. Implements token rotation.',
+    description: 'Exchanges refresh token for new access token. Implements token rotation. Rate limit: 10 requests per minute.',
   })
   @ApiResponse({
     status: 200,
@@ -216,9 +226,18 @@ export class AuthController {
    * @returns {Promise<{message: string}>} Generic success message
    */
   @Post('forgot-password')
+  @UseGuards(SensitiveEndpointRateLimitGuard)
+  @SensitiveRateLimit({
+    windowMs: 900000,
+    maxRequests: 3,
+    keyPrefix: 'password_reset',
+    enableProgressiveDelay: true,
+    blockOnExceed: true,
+    blockDurationMs: 1800000,
+  })
   @ApiOperation({
     summary: 'Request password reset email',
-    description: 'Sends password reset link to user email. Returns generic message for security.',
+    description: 'Sends password reset link to user email. Returns generic message for security. Rate limit: 3 requests per 15 minutes.',
   })
   @ApiResponse({
     status: 200,
@@ -244,9 +263,18 @@ export class AuthController {
    * @returns {Promise<{message: string}>} Success message
    */
   @Put('reset-password')
+  @UseGuards(SensitiveEndpointRateLimitGuard)
+  @SensitiveRateLimit({
+    windowMs: 900000,
+    maxRequests: 5,
+    keyPrefix: 'password_reset_confirm',
+    enableProgressiveDelay: true,
+    blockOnExceed: true,
+    blockDurationMs: 3600000,
+  })
   @ApiOperation({
     summary: 'Reset password using reset token',
-    description: 'Sets new password using token from password reset email. Token valid for 1 hour.',
+    description: 'Sets new password using token from password reset email. Token valid for 1 hour. Rate limit: 5 requests per 15 minutes.',
   })
   @ApiResponse({
     status: 200,

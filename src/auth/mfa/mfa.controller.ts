@@ -3,6 +3,8 @@ import { MfaService } from './mfa.service';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Request } from 'express';
+import { SensitiveEndpointRateLimitGuard } from '../../security/guards/sensitive-endpoint-rate-limit.guard';
+import { SensitiveRateLimit } from '../../security/decorators/sensitive-rate-limit.decorator';
 
 @ApiTags('mfa')
 @Controller('mfa')
@@ -20,8 +22,16 @@ export class MfaController {
   }
 
   @Post('verify')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Verify and complete MFA setup' })
+  @UseGuards(JwtAuthGuard, SensitiveEndpointRateLimitGuard)
+  @SensitiveRateLimit({
+    windowMs: 300000,
+    maxRequests: 5,
+    keyPrefix: 'mfa_verify',
+    enableProgressiveDelay: true,
+    blockOnExceed: true,
+    blockDurationMs: 1800000,
+  })
+  @ApiOperation({ summary: 'Verify and complete MFA setup. Rate limit: 5 attempts per 5 minutes.' })
   @ApiResponse({ status: 200, description: 'MFA setup completed successfully.' })
   @ApiResponse({ status: 400, description: 'Invalid MFA token.' })
   @HttpCode(HttpStatus.OK)
@@ -52,8 +62,15 @@ export class MfaController {
   }
 
   @Delete('disable')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Disable MFA for current user' })
+  @UseGuards(JwtAuthGuard, SensitiveEndpointRateLimitGuard)
+  @SensitiveRateLimit({
+    windowMs: 3600000,
+    maxRequests: 3,
+    keyPrefix: 'mfa_disable',
+    enableProgressiveDelay: false,
+    blockOnExceed: false,
+  })
+  @ApiOperation({ summary: 'Disable MFA for current user. Rate limit: 3 requests per hour.' })
   @ApiResponse({ status: 200, description: 'MFA disabled successfully.' })
   @HttpCode(HttpStatus.OK)
   async disableMfa(@Req() req: Request) {
@@ -63,8 +80,15 @@ export class MfaController {
   }
 
   @Post('backup-codes')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Generate new backup codes' })
+  @UseGuards(JwtAuthGuard, SensitiveEndpointRateLimitGuard)
+  @SensitiveRateLimit({
+    windowMs: 3600000,
+    maxRequests: 3,
+    keyPrefix: 'mfa_backup_gen',
+    enableProgressiveDelay: false,
+    blockOnExceed: false,
+  })
+  @ApiOperation({ summary: 'Generate new backup codes. Rate limit: 3 requests per hour.' })
   @ApiResponse({ status: 200, description: 'Backup codes generated successfully.' })
   @HttpCode(HttpStatus.OK)
   async generateBackupCodes(@Req() req: Request) {
@@ -74,8 +98,16 @@ export class MfaController {
   }
 
   @Post('verify-backup')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Verify backup code' })
+  @UseGuards(JwtAuthGuard, SensitiveEndpointRateLimitGuard)
+  @SensitiveRateLimit({
+    windowMs: 300000,
+    maxRequests: 10,
+    keyPrefix: 'mfa_backup_verify',
+    enableProgressiveDelay: true,
+    blockOnExceed: true,
+    blockDurationMs: 3600000,
+  })
+  @ApiOperation({ summary: 'Verify backup code. Rate limit: 10 attempts per 5 minutes.' })
   @ApiResponse({ status: 200, description: 'Backup code verified successfully.' })
   @ApiResponse({ status: 401, description: 'Invalid backup code.' })
   @HttpCode(HttpStatus.OK)

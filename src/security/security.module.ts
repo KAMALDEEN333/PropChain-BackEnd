@@ -7,11 +7,29 @@ import { DdosProtectionService } from './services/ddos-protection.service';
 import { ApiQuotaService } from './services/api-quota.service';
 import { SecurityHeadersService } from './services/security-headers.service';
 import { SecurityController } from './security.controller';
+import { AdvancedRateLimitGuard } from './guards/advanced-rate-limit.guard';
+import { SensitiveEndpointRateLimitGuard } from './guards/sensitive-endpoint-rate-limit.guard';
 
 @Module({
   imports: [ConfigModule, RedisModule],
   controllers: [SecurityController],
-  providers: [RateLimitingService, IpBlockingService, DdosProtectionService, ApiQuotaService, SecurityHeadersService],
-  exports: [RateLimitingService, IpBlockingService, DdosProtectionService, ApiQuotaService, SecurityHeadersService],
+  providers: [
+    RateLimitingService,
+    IpBlockingService,
+    DdosProtectionService,
+    ApiQuotaService,
+    SecurityHeadersService,
+    AdvancedRateLimitGuard,
+    SensitiveEndpointRateLimitGuard,
+  ],
+  exports: [
+    RateLimitingService,
+    IpBlockingService,
+    DdosProtectionService,
+    ApiQuotaService,
+    SecurityHeadersService,
+    AdvancedRateLimitGuard,
+    SensitiveEndpointRateLimitGuard,
+  ],
 })
 export class SecurityModule {}
