@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Bull from 'bull';
-import { getQueueToken } from '@nestjs/bull';
 
 /**
  * Email Queue Service
@@ -520,6 +519,7 @@ export class EmailQueueService implements OnModuleDestroy {
         );
       }
     }, this.memoryMonitorIntervalMs);
+    this.memoryMonitor.unref?.();
   }
 
   private startQueueCleanupMonitoring(): void {
@@ -537,20 +537,28 @@ export class EmailQueueService implements OnModuleDestroy {
         this.logger.error('Failed to clean queue history', error);
       }
     }, this.configService.get<number>('EMAIL_QUEUE_CLEANUP_INTERVAL_MS', 300000));
+    this.queueCleanupMonitor.unref?.();
   }
 
   private async withJobTimeout<T>(job: any, operation: () => Promise<T>): Promise<T> {
-    return await Promise.race([
-      operation(),
-      new Promise<T>((_, reject) => {
-        const timeoutHandle = setTimeout(() => {
-          reject(new Error(`Email job ${job.id} timed out after ${this.jobTimeoutMs}ms`));
-        }, this.jobTimeoutMs);
+    let timeoutHandle: NodeJS.Timeout | undefined;
 
-        // Keep the timer from retaining the event loop during shutdown.
-        timeoutHandle.unref?.();
-      }),
-    ]);
+    try {
+      return await Promise.race([
+        operation(),
+        new Promise<T>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            reject(new Error(`Email job ${job.id} timed out after ${this.jobTimeoutMs}ms`));
+          }, this.jobTimeoutMs);
+
+          timeoutHandle.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
   }
 
   private async cleanupJobResources(job: any): Promise<void> {
