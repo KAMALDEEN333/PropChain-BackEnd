@@ -16,6 +16,7 @@ import {
   BackupConfiguration,
   PointInTimeRecovery,
 } from './backup.types';
+import { BackupVerificationService } from './backup-verification.service';
 
 const execAsync = promisify(exec);
 
@@ -34,6 +35,7 @@ export class DatabaseBackupService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly verificationService: BackupVerificationService,
   ) {
     this.backupDir = path.join(process.cwd(), this.configService.get('BACKUP_DIR') || 'backups/database');
     this.initializeBackupDirectory();
@@ -141,6 +143,13 @@ export class DatabaseBackupService {
       this.backupMetadata.set(metadata.id, metadata);
 
       this.logger.log(`Full backup completed: ${backupId} (${metadata.size} bytes in ${metadata.duration}ms)`);
+
+      // Trigger immediate verification
+      try {
+        await this.verificationService.verifyBackup(backupId);
+      } catch (verifyError) {
+        this.logger.warn(`Immediate verification failed for backup ${backupId}: ${verifyError.message}`);
+      }
 
       return metadata;
     } catch (error) {

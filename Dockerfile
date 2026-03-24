@@ -3,7 +3,7 @@ FROM node:18-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat postgresql-client bash
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
@@ -33,6 +33,10 @@ RUN adduser --system --uid 1001 nestjs
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/package.json ./package.json
+
+# Copy scripts for backups
+COPY --from=builder --chown=nestjs:nodejs /app/scripts ./scripts
+RUN chmod +x scripts/*.sh
 
 # Create logs directory
 RUN mkdir -p logs && chown nestjs:nodejs logs

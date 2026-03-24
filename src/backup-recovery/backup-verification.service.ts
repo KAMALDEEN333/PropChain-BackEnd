@@ -111,6 +111,11 @@ export class BackupVerificationService {
       // Verify content structure
       await this.verifyBackupStructure(backupPath, check);
 
+      // Full restoration test (automated testing)
+      if (check.accessible && check.tableIntegrity.errors.length === 0) {
+        await this.verifyRestoration(backupPath, check);
+      }
+
       // Check restorability
       check.restorable = check.tableIntegrity.errors.length === 0 && check.accessible;
 
@@ -209,6 +214,49 @@ export class BackupVerificationService {
       }
     } catch (error) {
       check.tableIntegrity.errors.push(`PostgreSQL backup verification failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Perform full restoration test
+   */
+  private async verifyRestoration(filePath: string, check: BackupIntegrityCheck): Promise<void> {
+    if (!filePath.endsWith('.dump') && !filePath.endsWith('.dump.gz')) {
+      return; // Only test restoration for postgres dumps
+    }
+
+    this.logger.log(`Starting restoration test for ${filePath}`);
+    const execAsync = promisify(exec);
+    const scriptPath = path.join(process.cwd(), 'scripts', 'test-restore.sh');
+
+    try {
+      // Check if script exists and is executable
+      if (!fsSync.existsSync(scriptPath)) {
+        this.logger.warn(`Restoration test script not found at ${scriptPath}`);
+        return;
+      }
+
+      await fs.chmod(scriptPath, 0o755);
+
+      const databaseUrl = this.configService.get('DATABASE_URL');
+      const { stdout } = await execAsync(`bash "${scriptPath}" "${filePath}"`, {
+        env: { ...process.env, DATABASE_URL: databaseUrl },
+      });
+
+      this.logger.log(`Restoration test output: ${stdout}`);
+      
+      // Look for User and Property counts in output
+      const userCountMatch = stdout.match(/Restored User Count: (\d+)/);
+      const propertyCountMatch = stdout.match(/Restored Property Count: (\d+)/);
+
+      if (userCountMatch && propertyCountMatch) {
+          this.logger.log(`Restoration test PASSED: Users=${userCountMatch[1]}, Properties=${propertyCountMatch[1]}`);
+      } else {
+          this.logger.warn('Restoration test completed but count regex failed');
+      }
+    } catch (error) {
+      this.logger.error(`Restoration test failed: ${error.message}`);
+      check.tableIntegrity.errors.push(`Restoration test failed: ${error.message}`);
     }
   }
 

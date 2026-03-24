@@ -83,6 +83,15 @@ pg_dump \
 echo "Calculating checksum..."
 sha256sum "$BACKUP_DIR/$BACKUP_NAME.dump" > "$BACKUP_DIR/$BACKUP_NAME.sha256"
 
+# Validate backup
+echo "Validating backup..."
+if pg_restore -l "$BACKUP_DIR/$BACKUP_NAME.dump" > /dev/null 2>&1; then
+    echo "Backup validation passed: Dump is readable."
+else
+    echo "ERROR: Backup validation failed: Dump is corrupted or unreadable!"
+    exit 1
+fi
+
 # Compress backup
 echo "Compressing backup..."
 gzip -k "$BACKUP_DIR/$BACKUP_NAME.dump"
