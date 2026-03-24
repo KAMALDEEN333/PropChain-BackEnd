@@ -97,29 +97,54 @@ export class FeatureFlagMiddleware implements NestMiddleware {
 
       // Add custom user attributes
       if (req.user.plan) {
-        context.customAttributes!.plan = req.user.plan;
+        if (!context.customAttributes) {
+          context.customAttributes = {};
+        }
+        context.customAttributes.plan = req.user.plan;
       }
 
       if (req.user.region) {
-        context.customAttributes!.region = req.user.region;
+        if (!context.customAttributes) {
+          context.customAttributes = {};
+        }
+        context.customAttributes.region = req.user.region;
+      }
+
+      if (req.user.preferences) {
+        if (!context.customAttributes) {
+          context.customAttributes = {};
+        }
+        context.customAttributes.preferences = req.user.preferences;
       }
 
       if (req.user.createdAt) {
-        context.customAttributes!.userAge = Date.now() - new Date(req.user.createdAt).getTime();
+        if (!context.customAttributes) {
+          context.customAttributes = {};
+        }
+        context.customAttributes.userAge = Date.now() - new Date(req.user.createdAt).getTime();
       }
     }
 
     // Add request-specific attributes
     if (req.get('X-Country')) {
-      context.customAttributes!.country = req.get('X-Country');
+      if (!context.customAttributes) {
+        context.customAttributes = {};
+      }
+      context.customAttributes.country = req.get('X-Country');
     }
 
     if (req.get('X-Device-Type')) {
-      context.customAttributes!.deviceType = req.get('X-Device-Type');
+      if (!context.customAttributes) {
+        context.customAttributes = {};
+      }
+      context.customAttributes.deviceType = req.get('X-Device-Type');
     }
 
     if (req.get('X-App-Version')) {
-      context.customAttributes!.appVersion = req.get('X-App-Version');
+      if (!context.customAttributes) {
+        context.customAttributes = {};
+      }
+      context.customAttributes.appVersion = req.get('X-App-Version');
     }
 
     return context;

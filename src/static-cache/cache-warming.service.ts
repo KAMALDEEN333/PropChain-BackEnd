@@ -140,12 +140,20 @@ export class CacheWarmingService implements OnModuleInit, OnModuleDestroy {
             const warmResult = promiseResult.value;
             if (warmResult.success) {
               result.successCount++;
-              result.warmedEntries.push(warmResult.entry!);
+              result.warmedEntries.push(
+                warmResult.entry || {
+                  url: warmResult.url,
+                  key: warmResult.url,
+                  size: 0,
+                  contentType: 'JSON' as any,
+                  duration: 0,
+                },
+              );
             } else {
               result.failureCount++;
               result.errors.push({
                 url: warmResult.url,
-                error: warmResult.error!,
+                error: warmResult.error || 'Unknown error',
                 timestamp: new Date(),
               });
             }
@@ -395,8 +403,11 @@ export class CacheWarmingService implements OnModuleInit, OnModuleDestroy {
 
     // Execute jobs in priority order
     jobsToRun.sort((a, b) => {
-      const jobA = this.jobs.get(a)!;
-      const jobB = this.jobs.get(b)!;
+      const jobA = this.jobs.get(a);
+      const jobB = this.jobs.get(b);
+      if (!jobA || !jobB) {
+        return 0;
+      }
       return jobA.priority - jobB.priority;
     });
 
