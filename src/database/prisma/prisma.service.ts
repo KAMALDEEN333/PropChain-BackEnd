@@ -20,7 +20,26 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     private readonly logger: StructuredLoggerService,
   ) {
     // Get the database URL from environment/config
-    const databaseUrl = configService.get<string>('DATABASE_URL');
+    let databaseUrl = configService.get<string>('DATABASE_URL');
+
+    if (databaseUrl) {
+      // Enforce database connection encryption (SSL)
+      if (!databaseUrl.includes('sslmode=')) {
+        const separator = databaseUrl.includes('?') ? '&' : '?';
+        databaseUrl += `${separator}sslmode=require`;
+      }
+
+      // Enforce connection pooling security
+      if (!databaseUrl.includes('connection_limit=')) {
+        const separator = databaseUrl.includes('?') ? '&' : '?';
+        databaseUrl += `${separator}connection_limit=5`;
+      }
+      
+      if (!databaseUrl.includes('pool_timeout=')) {
+        const separator = databaseUrl.includes('?') ? '&' : '?';
+        databaseUrl += `${separator}pool_timeout=10`;
+      }
+    }
 
     // Prisma uses the connection URL to configure pooling
     // Example: postgresql://user:pass@host:5432/db?connection_limit=10&pool_timeout=30

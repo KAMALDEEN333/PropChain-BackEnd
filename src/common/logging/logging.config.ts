@@ -20,6 +20,9 @@ const SENSITIVE_KEYS = [
   'creditcard',
   'ssn',
   'pin',
+  'database_url',
+  'db_url',
+  'connection_string',
 ];
 
 /**
@@ -60,6 +63,14 @@ const redactFormat = () => {
   return winston.format(info => {
     // Redact common sensitive fields
     const redactedInfo = { ...info };
+
+    // Mask database credentials in string messages
+    if (typeof redactedInfo.message === 'string') {
+      redactedInfo.message = redactedInfo.message.replace(
+        /(postgres(?:ql)?|mysql):\/\/[^:]+:[^@]+@/g,
+        '$1://***:***@'
+      );
+    }
 
     // Redact nested data in 'meta' or 'data' fields
     if (redactedInfo.meta) {
