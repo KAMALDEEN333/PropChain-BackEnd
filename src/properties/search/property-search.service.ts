@@ -54,7 +54,7 @@ export class PropertySearchService {
     // Normal search
     return (this.prisma as any).property.findMany({
       where: {
-        status,
+        status: status as any,
         ...(location && { location: { contains: location, mode: 'insensitive' } }),
         ...(minPrice && { price: { gte: minPrice } }),
         ...(maxPrice && { price: { lte: maxPrice } }),
@@ -118,7 +118,7 @@ export class PropertySearchService {
 
     return (this.prisma as any).property.findMany({
       where: {
-        status,
+        status: status as any,
         ...(location && { location: { contains: location, mode: 'insensitive' } }),
         ...(minPrice && { price: { gte: minPrice } }),
         ...(maxPrice && { price: { lte: maxPrice } }),
