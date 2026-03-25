@@ -54,10 +54,14 @@ import { ApiVersionModule } from './common/api-version';
 // Feature Flags
 import { FeatureFlagModule } from './feature-flags/feature-flag.module';
 
+// Static Cache
+import { StaticCacheModule } from './static-cache/static-cache.module';
+
 // Middleware
 import { AuthRateLimitMiddleware } from './auth/middleware/auth.middleware';
 import { HeaderValidationMiddleware } from './security/middleware/header-validation.middleware';
 import { RequestValidationInterceptor } from './security/api/request.validation';
+import { StaticCacheMiddleware } from './static-cache/middleware/static-cache.middleware';
 import { ObservabilityModule } from './observability/observability.module';
 
 @Module({
@@ -141,6 +145,9 @@ import { ObservabilityModule } from './observability/observability.module';
 
     // Feature Flags
     FeatureFlagModule,
+
+    // Static Cache
+    StaticCacheModule,
   ],
   controllers: [
     AuditController, // Add the audit controller
@@ -167,6 +174,9 @@ import { ObservabilityModule } from './observability/observability.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
+      // Static content caching
+      .apply(StaticCacheMiddleware)
+      .forRoutes('*')
       // Header validation for security
       .apply(HeaderValidationMiddleware)
       .forRoutes('*')

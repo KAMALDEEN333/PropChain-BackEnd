@@ -76,11 +76,20 @@ describe('EmailQueueService', () => {
     }) as unknown as ConfigService;
 
   it('applies timeout defaults when adding jobs', async () => {
-    const service = new EmailQueueService(createConfigService());
+    const mockEmailQueue = createQueueMock() as any;
+    const mockBatchQueue = createQueueMock() as any;
+    const mockPriorityQueue = createQueueMock() as any;
+
+    const service = new EmailQueueService(
+      createConfigService(),
+      mockEmailQueue,
+      mockBatchQueue,
+      mockPriorityQueue,
+    );
 
     await service.add('default', { type: 'single', data: {} });
 
-    expect((service as any).emailQueue.add).toHaveBeenCalledWith(
+    expect(mockEmailQueue.add).toHaveBeenCalledWith(
       { type: 'single', data: {} },
       expect.objectContaining({
         timeout: 25,
@@ -89,10 +98,22 @@ describe('EmailQueueService', () => {
   });
 
   it('fails jobs that exceed the configured timeout', async () => {
-    const service = new EmailQueueService(createConfigService());
-    jest.spyOn<any, any>(service as any, 'processSingleEmail').mockImplementation(
-      () => new Promise(resolve => setTimeout(() => resolve({ success: true }), 100)),
+    const mockEmailQueue = createQueueMock() as any;
+    const mockBatchQueue = createQueueMock() as any;
+    const mockPriorityQueue = createQueueMock() as any;
+
+    const service = new EmailQueueService(
+      createConfigService(),
+      mockEmailQueue,
+      mockBatchQueue,
+      mockPriorityQueue,
     );
+
+    jest
+      .spyOn<any, any>(service as any, 'processSingleEmail')
+      .mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ success: true }), 100)),
+      );
 
     const pending = service.processEmailJob({
       id: 'job-timeout',
@@ -107,19 +128,24 @@ describe('EmailQueueService', () => {
   });
 
   it('removes listeners and clears monitors during shutdown', async () => {
-    const service = new EmailQueueService(createConfigService());
+    const mockEmailQueue = createQueueMock() as any;
+    const mockBatchQueue = createQueueMock() as any;
+    const mockPriorityQueue = createQueueMock() as any;
+
+    const service = new EmailQueueService(
+      createConfigService(),
+      mockEmailQueue,
+      mockBatchQueue,
+      mockPriorityQueue,
+    );
 
     await service.onModuleDestroy();
 
-    const emailQueue = (service as any).emailQueue;
-    const priorityQueue = (service as any).priorityQueue;
-    const batchQueue = (service as any).batchQueue;
-
-    expect(emailQueue.removeListener).toHaveBeenCalled();
-    expect(priorityQueue.removeListener).toHaveBeenCalled();
-    expect(batchQueue.removeListener).toHaveBeenCalled();
-    expect(emailQueue.close).toHaveBeenCalled();
-    expect(priorityQueue.close).toHaveBeenCalled();
-    expect(batchQueue.close).toHaveBeenCalled();
+    expect(mockEmailQueue.removeListener).toHaveBeenCalled();
+    expect(mockPriorityQueue.removeListener).toHaveBeenCalled();
+    expect(mockBatchQueue.removeListener).toHaveBeenCalled();
+    expect(mockEmailQueue.close).toHaveBeenCalled();
+    expect(mockPriorityQueue.close).toHaveBeenCalled();
+    expect(mockBatchQueue.close).toHaveBeenCalled();
   });
 });
