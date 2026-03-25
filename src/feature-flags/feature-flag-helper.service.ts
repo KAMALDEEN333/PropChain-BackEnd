@@ -24,15 +24,15 @@ export class FeatureFlagHelperService {
   /**
    * Check multiple feature flags at once
    */
-  async areEnabled(flagKeys: string[], context?: FlagEvaluationContext): Promise<Record<string, boolean>> {
+  async areEnabled(
+    flagKeys: string[],
+    context?: FlagEvaluationContext,
+  ): Promise<Record<string, boolean>> {
     const results = await this.featureFlagService.bulkEvaluate(flagKeys, context);
-    return results.reduce(
-      (acc, result) => {
-        acc[result.flagKey] = result.enabled;
-        return acc;
-      },
-      {} as Record<string, boolean>,
-    );
+    return results.reduce((acc, result) => {
+      acc[result.flagKey] = result.enabled;
+      return acc;
+    }, {} as Record<string, boolean>);
   }
 
   /**
@@ -40,7 +40,7 @@ export class FeatureFlagHelperService {
    */
   async isAnyEnabled(flagKeys: string[], context?: FlagEvaluationContext): Promise<boolean> {
     const enabledFlags = await this.areEnabled(flagKeys, context);
-    return Object.values(enabledFlags).some(enabled => enabled);
+    return Object.values(enabledFlags).some((enabled) => enabled);
   }
 
   /**
@@ -48,13 +48,17 @@ export class FeatureFlagHelperService {
    */
   async areAllEnabled(flagKeys: string[], context?: FlagEvaluationContext): Promise<boolean> {
     const enabledFlags = await this.areEnabled(flagKeys, context);
-    return Object.values(enabledFlags).every(enabled => enabled);
+    return Object.values(enabledFlags).every((enabled) => enabled);
   }
 
   /**
    * Get flags for a specific user
    */
-  async getUserFlags(userId: string, userEmail?: string, userRole?: string): Promise<Record<string, boolean>> {
+  async getUserFlags(
+    userId: string,
+    userEmail?: string,
+    userRole?: string,
+  ): Promise<Record<string, boolean>> {
     const context: FlagEvaluationContext = {
       userId,
       email: userEmail,
@@ -63,7 +67,7 @@ export class FeatureFlagHelperService {
 
     // Get all active flags
     const { flags } = await this.featureFlagService.findAll({ status: 'ACTIVE' as any });
-    const flagKeys = flags.map(flag => flag.key);
+    const flagKeys = flags.map((flag) => flag.key);
 
     return this.areEnabled(flagKeys, context);
   }
@@ -93,7 +97,11 @@ export class FeatureFlagHelperService {
   /**
    * Get feature flag with fallback value
    */
-  async getValueWithFallback<T>(flagKey: string, fallback: T, context?: FlagEvaluationContext): Promise<T> {
+  async getValueWithFallback<T>(
+    flagKey: string,
+    fallback: T,
+    context?: FlagEvaluationContext,
+  ): Promise<T> {
     try {
       const result = await this.getResult(flagKey, context);
       return result.enabled ? (result.value as T) : fallback;
@@ -105,7 +113,10 @@ export class FeatureFlagHelperService {
   /**
    * Check experimental features for developers
    */
-  async isExperimentalFeatureEnabled(featureName: string, context?: FlagEvaluationContext): Promise<boolean> {
+  async isExperimentalFeatureEnabled(
+    featureName: string,
+    context?: FlagEvaluationContext,
+  ): Promise<boolean> {
     const flagKey = `experimental-${featureName}`;
     return this.isEnabled(flagKey, context);
   }
@@ -113,7 +124,10 @@ export class FeatureFlagHelperService {
   /**
    * Check beta features for early adopters
    */
-  async isBetaFeatureEnabled(featureName: string, context?: FlagEvaluationContext): Promise<boolean> {
+  async isBetaFeatureEnabled(
+    featureName: string,
+    context?: FlagEvaluationContext,
+  ): Promise<boolean> {
     const flagKey = `beta-${featureName}`;
     return this.isEnabled(flagKey, context);
   }
@@ -141,7 +155,11 @@ export class FeatureFlagHelperService {
   /**
    * Gradual rollout check
    */
-  async isGradualRolloutEnabled(flagKey: string, userId: string, context?: FlagEvaluationContext): Promise<boolean> {
+  async isGradualRolloutEnabled(
+    flagKey: string,
+    userId: string,
+    context?: FlagEvaluationContext,
+  ): Promise<boolean> {
     const enhancedContext = {
       ...context,
       userId,
@@ -183,11 +201,11 @@ export class FeatureFlagHelperService {
    */
   async getEnabledFlags(context?: FlagEvaluationContext): Promise<string[]> {
     const { flags } = await this.featureFlagService.findAll({ status: 'ACTIVE' as any });
-    const flagKeys = flags.map(flag => flag.key);
+    const flagKeys = flags.map((flag) => flag.key);
     const enabledFlags = await this.areEnabled(flagKeys, context);
 
     return Object.entries(enabledFlags)
-      .filter(([_, enabled]) => enabled)
+      .filter(([_key, enabled]) => enabled)
       .map(([flagKey]) => flagKey);
   }
 

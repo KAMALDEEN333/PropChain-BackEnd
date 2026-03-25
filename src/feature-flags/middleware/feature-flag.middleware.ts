@@ -95,64 +95,39 @@ export class FeatureFlagMiddleware implements NestMiddleware {
       context.email = req.user.email;
       context.role = req.user.role;
 
-      // Add custom user attributes
       if (req.user.plan) {
-        if (!context.customAttributes) {
-          context.customAttributes = {};
-        }
-        context.customAttributes.plan = req.user.plan;
+        context.customAttributes!.plan = req.user.plan;
       }
 
       if (req.user.region) {
-        if (!context.customAttributes) {
-          context.customAttributes = {};
-        }
-        context.customAttributes.region = req.user.region;
-      }
-
-      if (req.user.preferences) {
-        if (!context.customAttributes) {
-          context.customAttributes = {};
-        }
-        context.customAttributes.preferences = req.user.preferences;
+        context.customAttributes!.region = req.user.region;
       }
 
       if (req.user.createdAt) {
-        if (!context.customAttributes) {
-          context.customAttributes = {};
-        }
-        context.customAttributes.userAge = Date.now() - new Date(req.user.createdAt).getTime();
+        context.customAttributes!.userAge =
+          Date.now() - new Date(req.user.createdAt).getTime();
       }
     }
 
     // Add request-specific attributes
     if (req.get('X-Country')) {
-      if (!context.customAttributes) {
-        context.customAttributes = {};
-      }
-      context.customAttributes.country = req.get('X-Country');
+      context.customAttributes!.country = req.get('X-Country');
     }
 
     if (req.get('X-Device-Type')) {
-      if (!context.customAttributes) {
-        context.customAttributes = {};
-      }
-      context.customAttributes.deviceType = req.get('X-Device-Type');
+      context.customAttributes!.deviceType = req.get('X-Device-Type');
     }
 
     if (req.get('X-App-Version')) {
-      if (!context.customAttributes) {
-        context.customAttributes = {};
-      }
-      context.customAttributes.appVersion = req.get('X-App-Version');
+      context.customAttributes!.appVersion = req.get('X-App-Version');
     }
 
     return context;
   }
 
   private logFlagEvaluations(req: FeatureFlagRequest, results: any[]): void {
-    const enabledFlags = results.filter(r => r.enabled).map(r => r.flagKey);
-    const disabledFlags = results.filter(r => !r.enabled).map(r => r.flagKey);
+    const enabledFlags = results.filter((r) => r.enabled).map((r) => r.flagKey);
+    const disabledFlags = results.filter((r) => !r.enabled).map((r) => r.flagKey);
 
     if (enabledFlags.length > 0 || disabledFlags.length > 0) {
       this.logger.debug(
