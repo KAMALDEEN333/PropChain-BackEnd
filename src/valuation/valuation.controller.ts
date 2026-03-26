@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Param, Body, ValidationPipe, HttpCode, HttpStatus, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { ValuationService } from './valuation.service';
-import { PropertyFeatures, ValuationResult } from './valuation.types';
+import { ValuationResult } from './valuation.types';
+import { PropertyFeaturesDto } from './dto/property-features.dto';
+import { BatchValuationRequestDto } from './dto/batch-valuation-request.dto';
 
 @ApiTags('valuation')
 @Controller('valuation')
@@ -20,7 +22,7 @@ export class ValuationController {
   @HttpCode(HttpStatus.OK)
   async getValuation(
     @Param('propertyId') propertyId: string,
-    @Body(ValidationPipe) features?: PropertyFeatures,
+    @Body() features?: PropertyFeaturesDto,
   ): Promise<ValuationResult> {
     this.logger.log(`Requesting valuation for property ${propertyId}`);
     return this.valuationService.getValuation(propertyId, features);
@@ -82,7 +84,7 @@ export class ValuationController {
   @ApiResponse({ status: 200, description: 'Batch valuations retrieved' })
   @HttpCode(HttpStatus.OK)
   async getBatchValuations(
-    @Body() requestBody: { properties: Array<{ propertyId: string; features?: PropertyFeatures }> },
+    @Body() requestBody: BatchValuationRequestDto,
   ) {
     const results = [];
     for (const item of requestBody.properties) {

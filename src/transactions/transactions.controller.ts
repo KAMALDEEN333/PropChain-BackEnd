@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
-import { CreateTransactionDto, DisputeDto, PaginationParams } from './dto/create-transaction.dto';
+import { CreateTransactionDto, DisputeDto } from './dto/create-transaction.dto';
+import { TransactionQueryDto } from './dto/transaction-query.dto';
 
 @Controller('transactions')
 export class TransactionsController {
@@ -22,7 +23,7 @@ export class TransactionsController {
   }
 
   @Get()
-  findAll(@Query() query: PaginationParams) {
+  findAll(@Query() query: TransactionQueryDto) {
     return this.service.findAll(query);
   }
 

@@ -3,7 +3,8 @@ import { PrismaService } from 'src/database';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { TransactionStatus, TransactionType } from 'src/models/transaction.entity';
 
-import { CreateTransactionDto, DisputeDto, PaginationParams } from './dto/create-transaction.dto';
+import { CreateTransactionDto, DisputeDto } from './dto/create-transaction.dto';
+import { TransactionQueryDto } from './dto/transaction-query.dto';
 
 @Injectable()
 export class TransactionsService {
@@ -89,10 +90,23 @@ export class TransactionsService {
     return this.prisma.transaction.findUnique({ where: { id } });
   }
 
-  async findAll(query: PaginationParams) {
+  async findAll(query: TransactionQueryDto) {
     const page = query.page || 1;
     const limit = query.limit || 20;
-    return this.prisma.transaction.findMany({ skip: (page - 1) * limit, take: limit });
+    
+    const where: any = {};
+    if (query.status) where.status = query.status;
+    if (query.type) where.type = query.type;
+    if (query.buyerId) where.buyerId = query.buyerId;
+    if (query.sellerId) where.sellerId = query.sellerId;
+    if (query.propertyId) where.propertyId = query.propertyId;
+
+    return this.prisma.transaction.findMany({ 
+      where,
+      skip: (page - 1) * limit, 
+      take: limit,
+      orderBy: { createdAt: 'desc' }
+    });
   }
 
   async raiseDispute(id: string, dto: DisputeDto) {

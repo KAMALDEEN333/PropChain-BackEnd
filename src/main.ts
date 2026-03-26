@@ -10,6 +10,7 @@ import { ErrorResponseDto } from './common/errors/error.dto';
 import { SecurityHeadersService } from './security/services/security-headers.service';
 import { DEFAULT_API_VERSION } from './common/api-version';
 import { CorsOriginValidator } from './config/utils/cors-origin.validator';
+import { ValidationExceptionFilter } from './common/filters/validation-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -93,7 +94,7 @@ async function bootstrap() {
 
   logger.log(`CORS configured with origins: ${corsOrigins.join(', ')}`);
 
-  // Global pipes
+  app.useGlobalFilters(new ValidationExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
