@@ -3,13 +3,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { ProviderFactory } from './providers/provider.factory';
 import { SupportedChain } from './enums/supported-chain.enum';
+import { SubmitPuzzleProvider } from './providers/submit-puzzle.provider';
 
 @Injectable()
 export class BlockchainService {
   private readonly logger = new Logger(BlockchainService.name);
   private providers = new Map<SupportedChain, ethers.JsonRpcProvider>();
-
-  constructor() {
+  constructor(private readonly submitPuzzleProvider: SubmitPuzzleProvider) {
     Object.values(SupportedChain).forEach(chain => {
       this.providers.set(chain, ProviderFactory.create(chain));
     });
@@ -69,5 +69,14 @@ export class BlockchainService {
       latestBlock: block,
       healthy: true,
     };
+  }
+
+  async submitPuzzleOnChain(
+    stellarWallet: string,
+    puzzleId: string,
+    category: string,
+    score: number,
+  ): Promise<void> {
+    return this.submitPuzzleProvider.submitPuzzleOnChain(stellarWallet, puzzleId, category, score);
   }
 }
