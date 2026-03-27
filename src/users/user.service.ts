@@ -113,11 +113,14 @@ export class UserService extends BaseService {
 
     // === UNIQUENESS VALIDATION ===
     // Prevents duplicate accounts with same email or wallet address
-    const existingUser = await this.prisma.user.findFirst({
-      where: {
-        OR: [{ email }, ...(walletAddress ? [{ walletAddress }] : [])],
-      },
-    });
+    const existingUser = await this.prisma.executeWithTimeout(
+      this.prisma.user.findFirst({
+        where: {
+          OR: [{ email }, ...(walletAddress ? [{ walletAddress }] : [])],
+        },
+      }),
+      5000 // 5 second timeout for uniqueness check
+    );
 
     if (existingUser) {
       throw new ConflictException('User with this email or wallet address already exists');
@@ -132,14 +135,17 @@ export class UserService extends BaseService {
     const hashedPassword = await bcrypt.hash(password, effectiveRounds);
 
     // Create user with hashed password
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        walletAddress,
-        role: 'USER', // Default role
-      },
-    });
+    const user = await this.prisma.executeWithTimeout(
+      this.prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          walletAddress,
+          role: 'USER', // Default role
+        },
+      }),
+      5000 // 5 second timeout for user creation
+    );
 
     // === PASSWORD HISTORY TRACKING ===
     // Add initial password to history for rotation policy enforcement
@@ -175,9 +181,12 @@ export class UserService extends BaseService {
       `user:email:${email}`,
       () =>
         this.monitorQuery('users.findByEmail', { email }, () =>
-          this.prisma.user.findUnique({
-            where: { email },
-          }),
+          this.prisma.executeWithTimeout(
+            this.prisma.user.findUnique({
+              where: { email },
+            }),
+            3000 // 3 second timeout for user lookup
+          )
         ),
       { l1Ttl: 60, l2Ttl: 300, tags: ['user'] },
     );
@@ -216,9 +225,12 @@ export class UserService extends BaseService {
       `user:detail:${id}`,
       () =>
         this.monitorQuery('users.findById', { userId: id }, () =>
-          this.prisma.user.findUnique({
-            where: { id },
-          }),
+          this.prisma.executeWithTimeout(
+            this.prisma.user.findUnique({
+              where: { id },
+            }),
+            3000 // 3 second timeout for user lookup
+          )
         ),
       { l1Ttl: 60, l2Ttl: 300, tags: ['user', `user:${id}`] },
     );
@@ -248,9 +260,12 @@ export class UserService extends BaseService {
       `user:wallet:${walletAddress}`,
       () =>
         this.monitorQuery('users.findByWalletAddress', { walletAddress }, () =>
-          this.prisma.user.findUnique({
-            where: { walletAddress },
-          }),
+          this.prisma.executeWithTimeout(
+            this.prisma.user.findUnique({
+              where: { walletAddress },
+            }),
+            3000 // 3 second timeout for wallet lookup
+          )
         ),
       { l1Ttl: 60, l2Ttl: 300, tags: ['user'] },
     );
@@ -296,10 +311,13 @@ export class UserService extends BaseService {
     const hashedPassword = await bcrypt.hash(newPassword, effectiveRounds);
 
     // Update user password
-    const updatedUser = await this.prisma.user.update({
-      where: { id: userId },
-      data: { password: hashedPassword },
-    });
+    const updatedUser = await this.prisma.executeWithTimeout(
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { password: hashedPassword },
+      }),
+      5000 // 5 second timeout for password update
+    );
 
     // === PASSWORD HISTORY TRACKING ===
     // Add new password to history for rotation policy enforcement

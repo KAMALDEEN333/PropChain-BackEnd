@@ -7,6 +7,8 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { StructuredLoggerService } from '../../common/logging/logger.service';
 import { PerformanceMonitorService, QueryOptimizerService } from '../optimization';
+import { TimeoutUtil } from '../../common/utils/timeout.util';
+import { DatabaseTimeoutException } from '../../common/errors/timeout.exceptions';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -94,6 +96,24 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     this.logger.log('Disconnecting from database...');
     await this.$disconnect();
     this.logger.log('Database connection closed');
+  }
+
+  /**
+   * Execute database operation with timeout
+   * @param operation - Database operation to execute
+   * @param timeoutMs - Timeout in milliseconds (default: 5000)
+   * @returns Promise with operation result
+   */
+  async executeWithTimeout<T>(operation: Promise<T>, timeoutMs: number = 5000): Promise<T> {
+    try {
+      return await TimeoutUtil.withTimeout(operation, timeoutMs);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('timed out')) {
+        this.logger.error('Database operation timed out', error.message, { timeoutMs });
+        throw new DatabaseTimeoutException('database operation', timeoutMs);
+      }
+      throw error;
+    }
   }
 
   /**

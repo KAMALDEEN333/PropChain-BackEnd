@@ -70,17 +70,20 @@ export class ApiKeyService extends BaseService {
     const rotationDueAt = new Date();
     rotationDueAt.setDate(rotationDueAt.getDate() + this.rotationIntervalDays);
 
-    const apiKey = await this.prisma.apiKey.create({
-      data: {
-        name: input.name,
-        key: encryptedKey,
-        keyPrefix,
-        scopes: input.scopes,
-        rateLimit: input.rateLimit,
-        rotationDueAt,
-        lastRotatedAt: new Date(),
-      },
-    });
+    const apiKey = await this.prisma.executeWithTimeout(
+      this.prisma.apiKey.create({
+        data: {
+          name: input.name,
+          key: encryptedKey,
+          keyPrefix,
+          scopes: input.scopes,
+          rateLimit: input.rateLimit,
+          rotationDueAt,
+          lastRotatedAt: new Date(),
+        },
+      }),
+      5000 // 5 second timeout for API key creation
+    );
 
     return this.mapOutput(CreateApiKeyResponseDto, {
       ...this.mapToResponseDto(apiKey),
@@ -97,9 +100,12 @@ export class ApiKeyService extends BaseService {
 
     // If no pagination query provided, return all (for backward compatibility)
     if (!normalizedQuery) {
-      const apiKeys = await this.prisma.apiKey.findMany({
-        orderBy: { createdAt: 'desc' },
-      });
+      const apiKeys = await this.prisma.executeWithTimeout(
+        this.prisma.apiKey.findMany({
+          orderBy: { createdAt: 'desc' },
+        }),
+        10000 // 10 second timeout for large queries
+      );
       return apiKeys.map(apiKey => this.mapToResponseDto(apiKey));
     }
 
@@ -107,12 +113,18 @@ export class ApiKeyService extends BaseService {
     const { skip, take, orderBy } = this.paginationService.getPrismaOptions(normalizedQuery, 'createdAt');
 
     const [apiKeys, total] = await Promise.all([
-      this.prisma.apiKey.findMany({
-        skip,
-        take,
-        orderBy,
-      }),
-      this.prisma.apiKey.count(),
+      this.prisma.executeWithTimeout(
+        this.prisma.apiKey.findMany({
+          skip,
+          take,
+          orderBy,
+        }),
+        8000 // 8 second timeout for paginated query
+      ),
+      this.prisma.executeWithTimeout(
+        this.prisma.apiKey.count(),
+        3000 // 3 second timeout for count query
+      ),
     ]);
 
     const data = apiKeys.map(apiKey => this.mapToResponseDto(apiKey));
@@ -120,9 +132,12 @@ export class ApiKeyService extends BaseService {
   }
 
   async findOne(id: string): Promise<ApiKeyResponseDto> {
-    const apiKey = await this.prisma.apiKey.findUnique({
-      where: { id },
-    });
+    const apiKey = await this.prisma.executeWithTimeout(
+      this.prisma.apiKey.findUnique({
+        where: { id },
+      }),
+      3000 // 3 second timeout for find operation
+    );
 
     if (!apiKey) {
       throw new NotFoundException(`API key with ID ${id} not found`);
@@ -140,35 +155,47 @@ export class ApiKeyService extends BaseService {
       this.validateScopes(input.scopes);
     }
 
-    const apiKey = await this.prisma.apiKey.findUnique({
-      where: { id },
-    });
+    const apiKey = await this.prisma.executeWithTimeout(
+      this.prisma.apiKey.findUnique({
+        where: { id },
+      }),
+      3000 // 3 second timeout for find operation
+    );
 
     if (!apiKey) {
       throw new NotFoundException(`API key with ID ${id} not found`);
     }
 
-    const updatedApiKey = await this.prisma.apiKey.update({
-      where: { id },
-      data: input,
-    });
+    const updatedApiKey = await this.prisma.executeWithTimeout(
+      this.prisma.apiKey.update({
+        where: { id },
+        data: input,
+      }),
+      5000 // 5 second timeout for update operation
+    );
 
     return this.mapToResponseDto(updatedApiKey);
   }
 
   async revoke(id: string): Promise<void> {
-    const apiKey = await this.prisma.apiKey.findUnique({
-      where: { id },
-    });
+    const apiKey = await this.prisma.executeWithTimeout(
+      this.prisma.apiKey.findUnique({
+        where: { id },
+      }),
+      3000 // 3 second timeout for find operation
+    );
 
     if (!apiKey) {
       throw new NotFoundException(`API key with ID ${id} not found`);
     }
 
-    await this.prisma.apiKey.update({
-      where: { id },
-      data: { isActive: false },
-    });
+    await this.prisma.executeWithTimeout(
+      this.prisma.apiKey.update({
+        where: { id },
+        data: { isActive: false, revokedAt: new Date() },
+      }),
+      5000 // 5 second timeout for revoke operation
+    );
 
     await this.redis.del(`rate_limit:${apiKey.keyPrefix}`);
   }
