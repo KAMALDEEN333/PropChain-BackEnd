@@ -14,6 +14,8 @@ export interface RateLimitConfig {
   maxRequests: number; // Maximum requests allowed in window
   keyPrefix?: string; // Redis key prefix
   tier?: UserTier; // User tier for tiered rate limiting
+  burstAllowance?: number; // Additional burst capacity beyond the base limit
+  scope?: string; // Endpoint scope for headers/analytics
 }
 
 export interface RateLimitInfo {
@@ -22,7 +24,11 @@ export interface RateLimitInfo {
   limit: number;
   window: number;
   tier?: UserTier;
+  retryAfterSeconds?: number;
+  scope?: string;
 }
+
+export type EndpointRateLimitTier = 'auth' | 'admin' | 'read' | 'write' | 'api';
 
 export interface RateLimitAnalytics {
   totalRequests: number;
@@ -58,6 +64,7 @@ export class RateLimitingService {
   async checkRateLimit(key: string, config: RateLimitConfig): Promise<{ allowed: boolean; info: RateLimitInfo }> {
     try {
       const finalConfig = this.applyTieredLimits(config);
+      const effectiveLimit = finalConfig.maxRequests + (finalConfig.burstAllowance || 0);
       const redisKey = `${finalConfig.keyPrefix || 'rate_limit'}:${key}`;
       const currentTime = Date.now();
       const windowStart = currentTime - finalConfig.windowMs;
@@ -69,7 +76,7 @@ export class RateLimitingService {
       const currentCount = await this.redisService.getRedisInstance().zcard(redisKey);
 
       // Check if limit exceeded
-      const allowed = currentCount < finalConfig.maxRequests;
+      const allowed = currentCount < effectiveLimit;
 
       // Add current request timestamp if allowed
       if (allowed) {
@@ -85,11 +92,13 @@ export class RateLimitingService {
       }
 
       const info: RateLimitInfo = {
-        remaining: Math.max(0, finalConfig.maxRequests - currentCount - (allowed ? 1 : 0)),
+        remaining: Math.max(0, effectiveLimit - currentCount - (allowed ? 1 : 0)),
         resetTime: currentTime + finalConfig.windowMs,
-        limit: finalConfig.maxRequests,
+        limit: effectiveLimit,
         window: finalConfig.windowMs,
         tier: finalConfig.tier,
+        retryAfterSeconds: allowed ? 0 : Math.max(1, Math.ceil(finalConfig.windowMs / 1000)),
+        scope: finalConfig.scope,
       };
 
       return { allowed, info };
@@ -101,9 +110,11 @@ export class RateLimitingService {
         info: {
           remaining: config.maxRequests,
           resetTime: Date.now() + config.windowMs,
-          limit: config.maxRequests,
+          limit: config.maxRequests + (config.burstAllowance || 0),
           window: config.windowMs,
           tier: config.tier,
+          retryAfterSeconds: 0,
+          scope: config.scope,
         },
       };
     }
@@ -166,20 +177,24 @@ export class RateLimitingService {
       const currentCount = await this.redisService.getRedisInstance().zcard(redisKey);
 
       return {
-        remaining: Math.max(0, finalConfig.maxRequests - currentCount),
+        remaining: Math.max(0, finalConfig.maxRequests + (finalConfig.burstAllowance || 0) - currentCount),
         resetTime: currentTime + finalConfig.windowMs,
-        limit: finalConfig.maxRequests,
+        limit: finalConfig.maxRequests + (finalConfig.burstAllowance || 0),
         window: finalConfig.windowMs,
         tier: finalConfig.tier,
+        retryAfterSeconds: Math.max(0, Math.ceil(finalConfig.windowMs / 1000)),
+        scope: finalConfig.scope,
       };
     } catch (error) {
       this.logger.error(`Failed to get rate limit info for key ${key}:`, error);
       return {
         remaining: config.maxRequests,
         resetTime: Date.now() + config.windowMs,
-        limit: config.maxRequests,
+        limit: config.maxRequests + (config.burstAllowance || 0),
         window: config.windowMs,
         tier: config.tier,
+        retryAfterSeconds: 0,
+        scope: config.scope,
       };
     }
   }
@@ -207,26 +222,90 @@ export class RateLimitingService {
         windowMs: 60000, // 1 minute
         maxRequests: this.configService.get<number>('RATE_LIMIT_API_PER_MINUTE', 100),
         keyPrefix: 'api_rate_limit',
+        burstAllowance: this.configService.get<number>('RATE_LIMIT_API_BURST', 20),
+        scope: 'api',
       },
       // Auth endpoints (stricter)
       auth: {
         windowMs: 60000, // 1 minute
         maxRequests: this.configService.get<number>('RATE_LIMIT_AUTH_PER_MINUTE', 5),
         keyPrefix: 'auth_rate_limit',
+        burstAllowance: this.configService.get<number>('RATE_LIMIT_AUTH_BURST', 1),
+        scope: 'auth',
+      },
+      // Admin endpoints (strict but usable)
+      admin: {
+        windowMs: 60000,
+        maxRequests: this.configService.get<number>('RATE_LIMIT_ADMIN_PER_MINUTE', 30),
+        keyPrefix: 'admin_rate_limit',
+        burstAllowance: this.configService.get<number>('RATE_LIMIT_ADMIN_BURST', 5),
+        scope: 'admin',
+      },
+      // Read-heavy endpoints
+      read: {
+        windowMs: 60000,
+        maxRequests: this.configService.get<number>('RATE_LIMIT_READ_PER_MINUTE', 120),
+        keyPrefix: 'read_rate_limit',
+        burstAllowance: this.configService.get<number>('RATE_LIMIT_READ_BURST', 30),
+        scope: 'read',
+      },
+      // Mutating endpoints
+      write: {
+        windowMs: 60000,
+        maxRequests: this.configService.get<number>('RATE_LIMIT_WRITE_PER_MINUTE', 60),
+        keyPrefix: 'write_rate_limit',
+        burstAllowance: this.configService.get<number>('RATE_LIMIT_WRITE_BURST', 10),
+        scope: 'write',
       },
       // Expensive operations (very strict)
       expensive: {
         windowMs: 60000, // 1 minute
         maxRequests: this.configService.get<number>('RATE_LIMIT_EXPENSIVE_PER_MINUTE', 10),
         keyPrefix: 'expensive_rate_limit',
+        burstAllowance: this.configService.get<number>('RATE_LIMIT_EXPENSIVE_BURST', 2),
+        scope: 'expensive',
       },
       // User-based rate limiting
       user: {
         windowMs: 3600000, // 1 hour
         maxRequests: this.configService.get<number>('RATE_LIMIT_USER_PER_HOUR', 1000),
         keyPrefix: 'user_rate_limit',
+        burstAllowance: this.configService.get<number>('RATE_LIMIT_USER_BURST', 100),
+        scope: 'user',
       },
     };
+  }
+
+  getEndpointConfiguration(path: string, method: string): RateLimitConfig {
+    const normalizedPath = path.toLowerCase();
+    const normalizedMethod = method.toUpperCase();
+    const defaults = this.getDefaultConfigurations();
+
+    if (normalizedPath.includes('/auth')) {
+      return defaults.auth;
+    }
+
+    if (
+      normalizedPath.includes('/admin') ||
+      normalizedPath.includes('/security') ||
+      normalizedPath.includes('/audit')
+    ) {
+      return defaults.admin;
+    }
+
+    if (['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod)) {
+      return defaults.read;
+    }
+
+    return defaults.write;
+  }
+
+  getWhitelistedIpsFromConfig(): string[] {
+    const value = this.configService.get<string>('RATE_LIMIT_WHITELIST_IPS', '');
+    return value
+      .split(',')
+      .map(ip => ip.trim())
+      .filter(Boolean);
   }
 
   /**

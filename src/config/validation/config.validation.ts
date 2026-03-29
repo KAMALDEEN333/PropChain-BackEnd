@@ -109,12 +109,24 @@ export const configValidationSchema = Joi.object({
   THROTTLE_TTL: Joi.number().default(60),
   THROTTLE_LIMIT: Joi.number().default(10),
   API_KEY_RATE_LIMIT_PER_MINUTE: Joi.number().default(60),
+  RATE_LIMIT_ENABLED: Joi.boolean().default(true),
 
   // Advanced Rate Limiting
   RATE_LIMIT_API_PER_MINUTE: Joi.number().default(100),
   RATE_LIMIT_AUTH_PER_MINUTE: Joi.number().default(5),
+  RATE_LIMIT_ADMIN_PER_MINUTE: Joi.number().default(30),
+  RATE_LIMIT_READ_PER_MINUTE: Joi.number().default(120),
+  RATE_LIMIT_WRITE_PER_MINUTE: Joi.number().default(60),
   RATE_LIMIT_EXPENSIVE_PER_MINUTE: Joi.number().default(10),
   RATE_LIMIT_USER_PER_HOUR: Joi.number().default(1000),
+  RATE_LIMIT_API_BURST: Joi.number().default(20),
+  RATE_LIMIT_AUTH_BURST: Joi.number().default(1),
+  RATE_LIMIT_ADMIN_BURST: Joi.number().default(5),
+  RATE_LIMIT_READ_BURST: Joi.number().default(30),
+  RATE_LIMIT_WRITE_BURST: Joi.number().default(10),
+  RATE_LIMIT_EXPENSIVE_BURST: Joi.number().default(2),
+  RATE_LIMIT_USER_BURST: Joi.number().default(100),
+  RATE_LIMIT_WHITELIST_IPS: Joi.string().allow('').default(''),
 
   // IP Blocking
   MAX_FAILED_ATTEMPTS: Joi.number().default(5),

@@ -78,8 +78,8 @@ import { CompressionModule } from './common/modules/compression.module';
 import { CompressionController } from './common/controllers/compression.controller';
 
 // Middleware
-import { AuthRateLimitMiddleware } from './auth/middleware/auth.middleware';
 import { HeaderValidationMiddleware } from './security/middleware/header-validation.middleware';
+import { RateLimitMiddleware } from './security/middleware/rate-limit.middleware';
 import { RequestValidationInterceptor } from './security/api/request.validation';
 import { StaticCacheMiddleware } from './static-cache/middleware/static-cache.middleware';
 import { ObservabilityModule } from './observability/observability.module';
@@ -226,7 +226,7 @@ export class AppModule implements NestModule {
       .forRoutes('*')
       .apply(HeaderValidationMiddleware)
       .forRoutes('*')
-      .apply(AuthRateLimitMiddleware)
-      .forRoutes('/auth*');
+      .apply(RateLimitMiddleware)
+      .forRoutes('*');
   }
 }

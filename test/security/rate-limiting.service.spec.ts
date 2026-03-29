@@ -81,10 +81,11 @@ describe('RateLimitingService', () => {
       const result = await service.checkRateLimit('test-key', {
         windowMs: 60000,
         maxRequests: 10,
+        burstAllowance: 2,
       });
 
       expect(result.allowed).toBe(true);
-      expect(result.info.remaining).toBe(4); // 10 - 5 - 1 (for current request)
+      expect(result.info.remaining).toBe(6); // 12 - 5 - 1 (for current request)
       expect(mockRedisService.zadd).toHaveBeenCalled();
     });
 
@@ -135,11 +136,35 @@ describe('RateLimitingService', () => {
 
       expect(configs).toHaveProperty('api');
       expect(configs).toHaveProperty('auth');
+      expect(configs).toHaveProperty('admin');
+      expect(configs).toHaveProperty('read');
+      expect(configs).toHaveProperty('write');
       expect(configs).toHaveProperty('expensive');
       expect(configs).toHaveProperty('user');
 
       expect(configs.api.maxRequests).toBe(100);
       expect(configs.auth.maxRequests).toBe(5);
+      expect(configs.admin.scope).toBe('admin');
+    });
+  });
+
+  describe('getEndpointConfiguration', () => {
+    it('should classify auth endpoints', () => {
+      const config = service.getEndpointConfiguration('/auth/login', 'POST');
+
+      expect(config.keyPrefix).toBe('auth_rate_limit');
+    });
+
+    it('should classify read endpoints', () => {
+      const config = service.getEndpointConfiguration('/properties', 'GET');
+
+      expect(config.keyPrefix).toBe('read_rate_limit');
+    });
+
+    it('should classify write endpoints', () => {
+      const config = service.getEndpointConfiguration('/properties', 'PATCH');
+
+      expect(config.keyPrefix).toBe('write_rate_limit');
     });
   });
 });
