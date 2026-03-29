@@ -204,6 +204,51 @@ The **Full Stack** shows **non-linear scaling** - the total overhead (4.0ms) is 
 2. **Blocking Calls**: Synchronous operations in security checks
 3. **Memory Pressure**: Cumulative memory usage affecting GC frequency
 
+## Memory Profiling And Leak Detection
+
+Middleware latency is only half the story for long-running services. To catch silent retention issues, the repository now includes an in-process memory profiling harness under `benchmarks/memory/`.
+
+### Profiling Workflow
+
+1. Run a scenario with heap snapshots before and after a 10k request stress pass.
+2. Compare `before.heapsnapshot` and `after.heapsnapshot` in Chrome DevTools.
+3. Review `summary.json` for heap and RSS deltas after forced GC.
+4. Investigate retained objects that remain reachable after the post-run GC.
+
+### Commands
+
+```bash
+npm run bench:memory
+npm run bench:memory -- --scenario=header-validation
+npm run bench:memory -- --scenario=circuit-breaker --requests=10000 --concurrency=50
+```
+
+### Output Artifacts
+
+Each run writes to `benchmarks/memory/output/<scenario>-<timestamp>/`:
+
+- `before.heapsnapshot`
+- `after.heapsnapshot`
+- `summary.json`
+
+### Current Leak-Risk Findings
+
+These findings are the current cleanup priorities identified from middleware structure review and should be validated with the new heap snapshots:
+
+| Middleware | Risk | Why It Needs Cleanup Attention |
+|------------|------|--------------------------------|
+| `StaticCacheMiddleware` | High | Wraps response methods and stores cache metadata that can retain large payload references if cleanup paths are missed |
+| `CircuitBreakerMiddleware` | Medium | Replaces `response.end` and keeps long-lived breaker state in memory |
+| `TimeoutMiddleware` | Medium | Allocates per-request timers and uses timeout/rejection coordination that must release closures promptly |
+| `HeaderValidationMiddleware` | Low | Attaches sanitized header objects to every request and should be checked for accidental retention under load |
+
+### Recommended Review Sequence
+
+1. Profile `baseline` to establish the control snapshot.
+2. Profile `combined` to detect cumulative middleware retention.
+3. Isolate the highest delta scenario with `header-validation` or `circuit-breaker`.
+4. Extend `benchmarks/memory/scenarios.ts` with additional middleware targets such as `StaticCacheMiddleware` as dependencies are mocked or adapted.
+
 ## Recommendations
 
 ### High Priority (Immediate Action)

@@ -61,6 +61,8 @@
     "bench:middleware": "ts-node benchmarks/chains/run-benchmarks.ts",
     "bench:middleware:quick": "ts-node benchmarks/chains/run-benchmarks.ts --iterations=100 --concurrency=5",
     "bench:middleware:full": "ts-node benchmarks/chains/run-benchmarks.ts --iterations=5000 --concurrency=20",
+    "bench:memory": "node --expose-gc -r ts-node/register benchmarks/memory/run-memory-profile.ts",
+    "bench:memory:10k": "node --expose-gc -r ts-node/register benchmarks/memory/run-memory-profile.ts --requests=10000 --concurrency=50",
     "loadtest:ci": "bash scripts/loadtest-ci.sh",
     "docs:generate": "typedoc --skipErrorChecking"
   },
