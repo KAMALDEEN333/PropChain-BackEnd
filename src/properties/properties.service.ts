@@ -4,8 +4,10 @@ import {
   UserNotFoundException,
   InvalidInputException,
   BusinessRuleViolationException,
+  TransactionRollbackException,
 } from '../common/errors/custom.exceptions';
 import { PrismaService } from '../database/prisma/prisma.service';
+import { TransactionManager } from '../database/prisma/transaction-manager.service';
 import { CreatePropertyDto, PropertyStatus as DTOPropertyStatus } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { PropertyQueryDto } from './dto/property-query.dto';
@@ -29,6 +31,7 @@ import { BoundaryValidationService } from '../common/validation';
 export class PropertiesService extends BaseService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly transactionManager: TransactionManager,
     private readonly configService: ConfigService,
     private readonly cacheService: MultiLevelCacheService,
     boundaryValidation: BoundaryValidationService,
@@ -65,13 +68,44 @@ export class PropertiesService extends BaseService {
     const input = await this.validateInput(CreatePropertyDto, createPropertyDto, 'create');
 
     try {
-      const owner = await (this.prisma as any).user.findUnique({
-        where: { id: ownerId },
-      });
+      return await this.transactionManager.execute(
+        'create-property',
+        async ctx => {
+          // Verify owner exists within transaction
+          const owner = await (ctx.tx as any).user.findUnique({
+            where: { id: ownerId },
+          });
 
-      if (!owner) {
-        throw new UserNotFoundException(ownerId);
-      }
+          if (!owner) {
+            ctx.markForRollback(`Owner ${ownerId} not found`);
+            throw new UserNotFoundException(ownerId);
+          }
+
+          const location = this.formatAddress(input.address);
+
+          const property = await (ctx.tx as any).property.create({
+            data: {
+              title: input.title,
+              description: input.description,
+              location,
+              price: input.price,
+              status: this.mapPropertyStatus(input.status || DTOPropertyStatus.AVAILABLE),
+              ownerId,
+              bedrooms: input.bedrooms,
+              bathrooms: input.bathrooms,
+              squareFootage: input.areaSqFt,
+              propertyType: input.type,
+            },
+            include: {
+              owner: {
+                select: { id: true, email: true, role: true },
+              },
+            },
+          });
+
+
+          this.logger.log(`Property created: ${property.id} by user ${ownerId}`);
+          return property;
 
       const location = this.formatAddress(input.address);
 
@@ -96,13 +130,13 @@ export class PropertiesService extends BaseService {
           owner: {
             select: { id: true, email: true, role: true },
           },
+
         },
-      });
+        { timeout: 10000, maxRetries: 3 },
+      );
 
+      // Invalidate caches after successful commit
       await this.invalidatePropertyReadCaches(property.id);
-
-      this.logger.log(`Property created: ${property.id} by user ${ownerId}`);
-      return property;
     } catch (error) {
       if (error instanceof UserNotFoundException || error instanceof InvalidInputException) {
         throw error;
@@ -318,60 +352,71 @@ export class PropertiesService extends BaseService {
     });
 
     try {
-      const existingProperty = await (this.prisma as any).property.findUnique({
-        where: { id },
-      });
+      return await this.transactionManager.execute(
+        'update-property',
+        async ctx => {
+          const existingProperty = await (ctx.tx as any).property.findUnique({
+            where: { id },
+          });
 
-      if (!existingProperty) {
-        throw new NotFoundException(`Property with ID ${id} not found`);
-      }
+          if (!existingProperty) {
+            ctx.markForRollback(`Property ${id} not found`);
+            throw new NotFoundException(`Property with ID ${id} not found`);
+          }
 
-      const updateData: any = {};
+          const updateData: any = {};
 
-      if (input.title !== undefined) {
-        updateData.title = input.title;
-      }
-      if (input.description !== undefined) {
-        updateData.description = input.description;
-      }
-      if (input.price !== undefined) {
-        updateData.price = input.price;
-      }
-      if (input.address) {
-        updateData.location = this.formatAddress(input.address);
-      }
-      if (input.status !== undefined) {
-        updateData.status = this.mapPropertyStatus(input.status);
-      }
-      if (input.bedrooms !== undefined) {
-        updateData.bedrooms = input.bedrooms;
-      }
-      if (input.bathrooms !== undefined) {
-        updateData.bathrooms = input.bathrooms;
-      }
-      if (input.areaSqFt !== undefined) {
-        updateData.squareFootage = input.areaSqFt;
-      }
-      if (input.type !== undefined) {
-        updateData.propertyType = input.type;
-      }
+          if (input.title !== undefined) {
+            updateData.title = input.title;
+          }
+          if (input.description !== undefined) {
+            updateData.description = input.description;
+          }
+          if (input.price !== undefined) {
+            updateData.price = input.price;
+          }
+          if (input.address) {
+            updateData.location = this.formatAddress(input.address);
+          }
+          if (input.status !== undefined) {
+            updateData.status = this.mapPropertyStatus(input.status);
+          }
+          if (input.bedrooms !== undefined) {
+            updateData.bedrooms = input.bedrooms;
+          }
+          if (input.bathrooms !== undefined) {
+            updateData.bathrooms = input.bathrooms;
+          }
+          if (input.areaSqFt !== undefined) {
+            updateData.squareFootage = input.areaSqFt;
+          }
+          if (input.type !== undefined) {
+            updateData.propertyType = input.type;
+          }
 
-      const property = await (this.prisma as any).property.update({
-        where: { id },
-        data: updateData,
-        relationLoadStrategy: 'join',
-        include: {
-          owner: { select: { id: true, email: true, role: true } },
+          const property = await (ctx.tx as any).property.update({
+            where: { id },
+            data: updateData,
+            relationLoadStrategy: 'join',
+            include: {
+              owner: { select: { id: true, email: true, role: true } },
+            },
+          });
+
+          this.logger.log(`Property updated: ${property.id}`);
+          return property;
         },
-      });
+        { timeout: 10000, maxRetries: 3 },
+      );
+
+
+      // Invalidate caches after successful commit
 
       // After successful update, save the old state as a version
       await this.savePropertyVersion(id, existingProperty, input.versionReason || 'Update');
 
-      await this.invalidatePropertyReadCaches(id);
 
-      this.logger.log(`Property updated: ${property.id}`);
-      return property;
+      await this.invalidatePropertyReadCaches(id);
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof InvalidInputException) {
         throw error;
@@ -383,6 +428,28 @@ export class PropertiesService extends BaseService {
 
   async remove(id: string): Promise<void> {
     try {
+
+      await this.transactionManager.execute(
+        'delete-property',
+        async ctx => {
+          const existingProperty = await (ctx.tx as any).property.findUnique({
+            where: { id },
+          });
+
+          if (!existingProperty) {
+            ctx.markForRollback(`Property ${id} not found`);
+            throw new NotFoundException(`Property with ID ${id} not found`);
+          }
+
+          await (ctx.tx as any).property.delete({
+            where: { id },
+          });
+
+          this.logger.log(`Property deleted: ${id}`);
+        },
+        { timeout: 10000, maxRetries: 3 },
+      );
+
       const existingProperty = await (this.prisma as any).property.findUnique({
         where: { id },
       });
@@ -400,9 +467,14 @@ export class PropertiesService extends BaseService {
         },
       });
 
+
+      // Invalidate caches after successful commit
       await this.invalidatePropertyReadCaches(id);
 
+
+
       this.logger.log(`Property soft deleted: ${id}`);
+
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;

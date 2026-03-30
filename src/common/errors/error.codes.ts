@@ -64,6 +64,15 @@ export enum ErrorCode {
   SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
   EXTERNAL_API_ERROR = 'EXTERNAL_API_ERROR',
   CIRCUIT_OPEN = 'CIRCUIT_OPEN',
+
+  // =========================
+  // Transaction Management
+  // =========================
+  TRANSACTION_TIMEOUT = 'TRANSACTION_TIMEOUT',
+  TRANSACTION_DEADLOCK = 'TRANSACTION_DEADLOCK',
+  TRANSACTION_ROLLBACK = 'TRANSACTION_ROLLBACK',
+  TRANSACTION_RETRY_EXHAUSTED = 'TRANSACTION_RETRY_EXHAUSTED',
+  COMPENSATION_FAILED = 'COMPENSATION_FAILED',
 }
 
 export const ErrorMessages: Record<ErrorCode, string> = {
@@ -120,4 +129,11 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.SERVICE_UNAVAILABLE]: 'The requested service is temporarily unavailable.',
   [ErrorCode.CIRCUIT_OPEN]: 'Circuit breaker is open. Please try again later.',
   [ErrorCode.EXTERNAL_API_ERROR]: 'An error occurred while communicating with an external service.',
+
+  // Transaction Management
+  [ErrorCode.TRANSACTION_TIMEOUT]: 'The database transaction timed out. Please try again.',
+  [ErrorCode.TRANSACTION_DEADLOCK]: 'A deadlock was detected. The transaction was rolled back.',
+  [ErrorCode.TRANSACTION_ROLLBACK]: 'The transaction was rolled back due to an error.',
+  [ErrorCode.TRANSACTION_RETRY_EXHAUSTED]: 'Maximum transaction retry attempts exceeded.',
+  [ErrorCode.COMPENSATION_FAILED]: 'A compensation action failed during transaction rollback.',
 };

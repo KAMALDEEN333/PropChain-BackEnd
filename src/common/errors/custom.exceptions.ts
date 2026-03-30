@@ -137,3 +137,35 @@ export class ServiceUnavailableException extends BaseCustomException {
     super(ErrorCode.SERVICE_UNAVAILABLE, message, undefined, HttpStatus.SERVICE_UNAVAILABLE);
   }
 }
+
+// Transaction Exceptions
+export class TransactionTimeoutException extends BaseCustomException {
+  constructor(message?: string) {
+    super(ErrorCode.TRANSACTION_TIMEOUT, message, undefined, HttpStatus.REQUEST_TIMEOUT);
+  }
+}
+
+export class TransactionDeadlockException extends BaseCustomException {
+  constructor(message?: string) {
+    super(ErrorCode.TRANSACTION_DEADLOCK, message, undefined, HttpStatus.CONFLICT);
+  }
+}
+
+export class TransactionRollbackException extends BaseCustomException {
+  constructor(message?: string, details?: string[]) {
+    super(ErrorCode.TRANSACTION_ROLLBACK, message, details, HttpStatus.INTERNAL_SERVER_ERROR);
+  }
+}
+
+export class TransactionRetryExhaustedException extends BaseCustomException {
+  constructor(message?: string, attempts?: number) {
+    const msg = attempts ? `${message} (attempts: ${attempts})` : message;
+    super(ErrorCode.TRANSACTION_RETRY_EXHAUSTED, msg, undefined, HttpStatus.INTERNAL_SERVER_ERROR);
+  }
+}
+
+export class CompensationFailedException extends BaseCustomException {
+  constructor(message?: string, details?: string[]) {
+    super(ErrorCode.COMPENSATION_FAILED, message, details, HttpStatus.INTERNAL_SERVER_ERROR);
+  }
+}
