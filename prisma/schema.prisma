@@ -134,12 +134,19 @@ model BlacklistedToken {
   jti       String    @unique
   tokenType TokenType @map("token_type")
   expiresAt DateTime  @map("expires_at")
+  tokenFamily String? @map("token_family") // Track token rotation family
+  previousJti String? @map("previous_jti") // Link to previous token in rotation
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  reusedAt   DateTime? @map("reused_at") // When token reuse was detected
   createdAt DateTime  @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([tokenFamily])
+  @@index([tokenFamily, createdAt])
   @@map("blacklisted_tokens")
 }
 

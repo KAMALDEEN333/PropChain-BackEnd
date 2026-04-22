@@ -35,8 +35,10 @@ export class AuthController {
   }
 
   @Post('refresh')
-  refresh(@Body() refreshTokenDto: RefreshTokenDto) {
-    return this.authService.refreshToken(refreshTokenDto);
+  refresh(@Body() refreshTokenDto: RefreshTokenDto, @Req() request: Request) {
+    const ipAddress = request.ip || request.socket.remoteAddress;
+    const userAgent = request.headers['user-agent'];
+    return this.authService.refreshToken(refreshTokenDto, ipAddress, userAgent);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -51,10 +53,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('logout-all')
-  logoutAllDevices(
-    @CurrentUser() user: AuthUserPayload,
-    @Req() request: { accessToken?: string },
-  ) {
+  logoutAllDevices(@CurrentUser() user: AuthUserPayload, @Req() request: { accessToken?: string }) {
     return this.authService.logoutAllDevices(user, request.accessToken);
   }
 
