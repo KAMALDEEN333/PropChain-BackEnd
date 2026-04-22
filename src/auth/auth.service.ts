@@ -241,6 +241,162 @@ export class AuthService {
     return sanitizeUser(foundUser);
   }
 
+  async getDashboard(user: AuthUserPayload) {
+    const foundUser = await this.prisma.user.findUnique({
+      where: { id: user.sub },
+    });
+
+    if (!foundUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    const [properties, buyerTransactions, sellerTransactions, documents, apiKeys] = await Promise.all([
+      this.prisma.property.findMany({
+        where: { ownerId: user.sub },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      this.prisma.transaction.findMany({
+        where: { buyerId: user.sub },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: {
+          property: {
+            select: {
+              id: true,
+              title: true,
+              address: true,
+              city: true,
+              state: true,
+              price: true,
+            },
+          },
+          seller: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      }),
+      this.prisma.transaction.findMany({
+        where: { sellerId: user.sub },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: {
+          property: {
+            select: {
+              id: true,
+              title: true,
+              address: true,
+              city: true,
+              state: true,
+              price: true,
+            },
+          },
+          buyer: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      }),
+      this.prisma.document.findMany({
+        where: { userId: user.sub },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      this.prisma.apiKey.findMany({
+        where: { userId: user.sub },
+        orderBy: { createdAt: 'desc' },
+        take: 3,
+      }),
+    ]);
+
+    const [
+      totalProperties,
+      activeListings,
+      pendingSales,
+      totalPurchases,
+      totalSales,
+      completedPurchases,
+      completedSales,
+    ] = await Promise.all([
+      this.prisma.property.count({ where: { ownerId: user.sub } }),
+      this.prisma.property.count({ where: { ownerId: user.sub, status: 'ACTIVE' } }),
+      this.prisma.transaction.count({ where: { sellerId: user.sub, status: 'PENDING' } }),
+      this.prisma.transaction.count({ where: { buyerId: user.sub } }),
+      this.prisma.transaction.count({ where: { sellerId: user.sub } }),
+      this.prisma.transaction.count({ where: { buyerId: user.sub, status: 'COMPLETED' } }),
+      this.prisma.transaction.count({ where: { sellerId: user.sub, status: 'COMPLETED' } }),
+    ]);
+
+    const recommendationProperties = await this.prisma.property.findMany({
+      where: {
+        status: 'ACTIVE',
+        ownerId: { not: user.sub },
+        NOT: {
+          ownerId: user.sub,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      include: {
+        owner: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+
+    const recentActivity = [
+      ...transactionsToActivityItems(buyerTransactions, 'purchase'),
+      ...transactionsToActivityItems(sellerTransactions, 'sale'),
+      ...documents.map((doc) => ({
+        type: 'document' as const,
+        id: doc.id,
+        title: doc.fileName,
+        description: `Uploaded ${doc.documentType.toLowerCase().replace('_', ' ')}`,
+        timestamp: doc.createdAt,
+      })),
+    ]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 10);
+
+    return {
+      profile: sanitizeUser(foundUser),
+      quickStats: {
+        totalProperties,
+        activeListings,
+        pendingSales,
+        totalPurchases,
+        totalSales,
+        completedPurchases,
+        completedSales,
+        apiKeysCount: apiKeys.length,
+      },
+      recentActivity,
+      recommendations: recommendationProperties.map((p) => ({
+        id: p.id,
+        title: p.title,
+        address: p.address,
+        city: p.city,
+        state: p.state,
+        price: p.price.toString(),
+        propertyType: p.propertyType,
+        bedrooms: p.bedrooms,
+        bathrooms: p.bathrooms?.toString(),
+        squareFeet: p.squareFeet?.toString(),
+        status: p.status,
+        agent: `${p.owner.firstName} ${p.owner.lastName}`,
+        createdAt: p.createdAt,
+      })),
+    };
+  }
+
   async changePassword(user: AuthUserPayload, data: ChangePasswordDto) {
     const passwordHistoryLimit = getPasswordHistoryLimit();
     const existingUser = await this.prisma.user.findUnique({
