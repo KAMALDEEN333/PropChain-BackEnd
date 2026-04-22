@@ -6,6 +6,7 @@ import { PrismaModule } from './database/prisma.module';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { SessionsModule } from './sessions/sessions.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     PropertiesModule,
     AuthModule,
     DashboardModule,
+    SessionsModule,
   ],
   controllers: [AppController],
 })

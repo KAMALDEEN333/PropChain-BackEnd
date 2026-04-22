@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../database/prisma.service';
 import { UsersService } from '../users/users.service';
+import { SessionsService } from '../sessions/sessions.service';
 import {
   ChangePasswordDto,
   CreateApiKeyDto,
@@ -54,6 +55,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
+    private readonly sessionsService: SessionsService,
     private readonly configService: ConfigService,
   ) {
     this.jwtSecret = this.configService.get<string>('JWT_SECRET') ?? 'propchain-access-secret';
@@ -662,7 +664,7 @@ export class AuthService {
     };
   }
 
-  private async issueTokenPair(user: User) {
+  private async issueTokenPair(user: User, ipAddress?: string, userAgent?: string) {
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
 
@@ -685,6 +687,16 @@ export class AuthService {
         jti: refreshJti,
       },
       this.jwtRefreshSecret,
+      this.refreshTokenTtlSeconds,
+    );
+
+    // Create a session for tracking
+    await this.sessionsService.createSession(
+      user.id,
+      accessJti,
+      refreshJti,
+      ipAddress,
+      userAgent,
       this.refreshTokenTtlSeconds,
     );
 
