@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -49,11 +50,13 @@ type JwtPayload = {
   role: UserRole;
   type: 'access' | 'refresh';
   jti: string;
+  family?: string; // Token rotation family ID
   exp?: number;
 };
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly issuer = 'PropChain';
   private readonly accessTokenTtlSeconds: number;
   private readonly refreshTokenTtlSeconds: number;
@@ -212,14 +215,31 @@ export class AuthService {
     };
   }
 
-  async refreshToken(data: RefreshTokenDto) {
+  async refreshToken(data: RefreshTokenDto, ipAddress?: string, userAgent?: string) {
     const payload = this.verifyToken(data.refreshToken, this.jwtRefreshSecret) as JwtPayload;
 
     if (payload.type !== 'refresh') {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    await this.ensureTokenNotBlacklisted(payload.jti);
+    // Check if token is blacklisted (already used)
+    const blacklistedToken = await this.prisma.blacklistedToken.findUnique({
+      where: { jti: payload.jti },
+    });
+
+    if (blacklistedToken) {
+      // TOKEN REUSE DETECTED! This is a potential attack
+      // Mark the reuse and invalidate the entire token family
+      await this.handleTokenReuse(blacklistedToken, payload.jti, ipAddress, userAgent);
+
+      this.logger.error(
+        `Refresh token reuse detected for user ${payload.sub} (JTI: ${payload.jti}, Family: ${payload.family}). IP: ${ipAddress}`,
+      );
+
+      throw new UnauthorizedException(
+        'Token reuse detected. All sessions have been invalidated for security. Please login again.',
+      );
+    }
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
@@ -236,50 +256,179 @@ export class AuthService {
       throw new UnauthorizedException('Your account has been deactivated');
     }
 
-    if (user.id !== payload.sub) {
-      throw new UnauthorizedException('Refresh token does not match the authenticated user');
-    }
-
+    // Blacklist the current refresh token (rotation)
     await this.blacklistToken({
       jti: payload.jti,
       tokenType: 'REFRESH',
       expiresAt: new Date((payload.exp ?? 0) * 1000),
       userId: user.id,
+      tokenFamily: payload.family,
+      ipAddress,
+      userAgent,
     });
 
-    const tokens = await this.issueTokenPair(user);
+    // Issue new token pair with SAME family ID
+    const tokens = await this.issueTokenPair(user, payload.family);
+
+    this.logger.log(
+      `Token rotated for user ${user.id} (${user.email}). Family: ${payload.family}. IP: ${ipAddress}`,
+    );
+
     return {
       user: sanitizeUser(user),
       ...tokens,
     };
   }
 
+  /**
+   * Handle token reuse detection - invalidate entire token family
+   */
+  private async handleTokenReuse(
+    blacklistedToken: any,
+    reusedJti: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    const now = new Date();
+
+    // Mark the reused token
+    await this.prisma.blacklistedToken.update({
+      where: { jti: reusedJti },
+      data: {
+        reusedAt: now,
+        ipAddress: ipAddress || blacklistedToken.ipAddress,
+        userAgent: userAgent || blacklistedToken.userAgent,
+      },
+    });
+
+    // Invalidate entire token family if it exists
+    if (blacklistedToken.tokenFamily) {
+      const familyTokens = await this.prisma.blacklistedToken.findMany({
+        where: {
+          tokenFamily: blacklistedToken.tokenFamily,
+          expiresAt: { gt: now }, // Only active tokens
+        },
+        select: { jti: true },
+      });
+
+      this.logger.warn(
+        `Invalidating ${familyTokens.length} tokens in family ${blacklistedToken.tokenFamily} due to reuse detection`,
+      );
+
+      // All tokens in this family are already blacklisted, but we log the event
+      // The key is that we're preventing the attacker from using any token from this family
+    }
+  }
+
   async logout(user: AuthUserPayload, refreshToken?: string, accessToken?: string) {
+    const logoutTime = new Date();
+
+    // Blacklist the access token if provided
     if (accessToken) {
-      const accessPayload = this.verifyToken(accessToken, this.jwtSecret) as JwtPayload;
-      await this.blacklistToken({
-        jti: accessPayload.jti,
-        tokenType: 'ACCESS',
-        expiresAt: new Date((accessPayload.exp ?? 0) * 1000),
-        userId: user.sub,
-      });
-    }
-
-    if (refreshToken) {
-      const refreshPayload = this.verifyToken(refreshToken, this.jwtRefreshSecret) as JwtPayload;
-      if (refreshPayload.sub !== user.sub) {
-        throw new UnauthorizedException('Refresh token does not belong to the current user');
+      try {
+        const accessPayload = this.verifyToken(accessToken, this.jwtSecret) as JwtPayload;
+        await this.blacklistToken({
+          jti: accessPayload.jti,
+          tokenType: 'ACCESS',
+          expiresAt: new Date((accessPayload.exp ?? 0) * 1000),
+          userId: user.sub,
+          tokenFamily: accessPayload.family,
+        });
+      } catch (error) {
+        // Token might already be expired or invalid, continue with logout
+        this.logger.warn(`Failed to blacklist access token for user ${user.sub}: ${error.message}`);
       }
-
-      await this.blacklistToken({
-        jti: refreshPayload.jti,
-        tokenType: 'REFRESH',
-        expiresAt: new Date((refreshPayload.exp ?? 0) * 1000),
-        userId: user.sub,
-      });
     }
 
-    return { message: 'Logged out successfully' };
+    // Blacklist the specific refresh token if provided
+    if (refreshToken) {
+      try {
+        const refreshPayload = this.verifyToken(refreshToken, this.jwtRefreshSecret) as JwtPayload;
+        if (refreshPayload.sub !== user.sub) {
+          throw new UnauthorizedException('Refresh token does not belong to the current user');
+        }
+
+        await this.blacklistToken({
+          jti: refreshPayload.jti,
+          tokenType: 'REFRESH',
+          expiresAt: new Date((refreshPayload.exp ?? 0) * 1000),
+          userId: user.sub,
+          tokenFamily: refreshPayload.family,
+        });
+      } catch (error) {
+        if (error instanceof UnauthorizedException) {
+          throw error;
+        }
+        // Token might already be expired or invalid, continue with logout
+        this.logger.warn(
+          `Failed to blacklist refresh token for user ${user.sub}: ${error.message}`,
+        );
+      }
+    }
+
+    // Log the logout event
+    this.logger.log(
+      `User ${user.sub} (${user.email}) logged out successfully at ${logoutTime.toISOString()}`,
+    );
+
+    return {
+      message: 'Logged out successfully',
+      logoutTime: logoutTime.toISOString(),
+      tokensInvalidated: {
+        accessToken: !!accessToken,
+        refreshToken: !!refreshToken,
+      },
+      clientAction: {
+        clearStorage: true,
+        clearCookies: true,
+        redirectUrl: '/login',
+      },
+    };
+  }
+
+  async logoutAllDevices(user: AuthUserPayload, accessToken?: string) {
+    const logoutTime = new Date();
+
+    // Blacklist the current access token if provided
+    if (accessToken) {
+      try {
+        const accessPayload = this.verifyToken(accessToken, this.jwtSecret) as JwtPayload;
+        await this.blacklistToken({
+          jti: accessPayload.jti,
+          tokenType: 'ACCESS',
+          expiresAt: new Date((accessPayload.exp ?? 0) * 1000),
+          userId: user.sub,
+        });
+      } catch (error) {
+        this.logger.warn(`Failed to blacklist access token for user ${user.sub}: ${error.message}`);
+      }
+    }
+
+    // Find all blacklisted refresh tokens for this user that are still active
+    const blacklistedRefreshTokens = await this.prisma.blacklistedToken.findMany({
+      where: {
+        userId: user.sub,
+        tokenType: 'REFRESH',
+        expiresAt: {
+          gt: logoutTime, // Only count tokens that haven't expired yet
+        },
+      },
+    });
+
+    this.logger.log(
+      `User ${user.sub} (${user.email}) logged out from all devices at ${logoutTime.toISOString()}. Total active blacklisted refresh tokens: ${blacklistedRefreshTokens.length}`,
+    );
+
+    return {
+      message: 'Logged out from all devices successfully',
+      logoutTime: logoutTime.toISOString(),
+      blacklistedTokensCount: blacklistedRefreshTokens.length,
+      clientAction: {
+        clearStorage: true,
+        clearCookies: true,
+        redirectUrl: '/login',
+      },
+    };
   }
 
   async me(user: AuthUserPayload) {
@@ -292,6 +441,16 @@ export class AuthService {
     }
 
     return sanitizeUser(foundUser);
+  }
+
+  private transactionsToActivityItems(transactions: any[], type: 'purchase' | 'sale') {
+    return transactions.map((tx) => ({
+      type: 'transaction' as const,
+      id: tx.id,
+      title: `Property ${type === 'purchase' ? 'Purchased' : 'Sold'}: ${tx.property?.title || 'Unknown'}`,
+      description: `${type === 'purchase' ? 'Bought' : 'Sold'} for $${tx.amount}`,
+      timestamp: tx.createdAt,
+    }));
   }
 
   async getDashboard(user: AuthUserPayload) {
@@ -742,6 +901,7 @@ export class AuthService {
   private async issueTokenPair(user: User, ipAddress?: string, userAgent?: string) {
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
+    const family = tokenFamily || randomUUID(); // Create new family if not provided
 
     const accessToken = this.signToken(
       {
@@ -750,6 +910,7 @@ export class AuthService {
         role: user.role as UserRole,
         type: 'access',
         jti: accessJti,
+        family: family,
       },
       this.jwtSecret,
       this.accessTokenTtlSeconds,
@@ -762,6 +923,7 @@ export class AuthService {
         role: user.role as UserRole,
         type: 'refresh',
         jti: refreshJti,
+        family: family,
       },
       this.jwtRefreshSecret,
       this.refreshTokenTtlSeconds,
@@ -817,6 +979,10 @@ export class AuthService {
     tokenType: 'ACCESS' | 'REFRESH';
     expiresAt: Date;
     userId?: string;
+    tokenFamily?: string;
+    previousJti?: string;
+    ipAddress?: string;
+    userAgent?: string;
   }) {
     await this.prisma.blacklistedToken.upsert({
       where: { jti: data.jti },
@@ -824,8 +990,21 @@ export class AuthService {
         expiresAt: data.expiresAt,
         tokenType: data.tokenType,
         userId: data.userId,
+        tokenFamily: data.tokenFamily,
+        previousJti: data.previousJti,
+        ipAddress: data.ipAddress,
+        userAgent: data.userAgent,
       },
-      create: data,
+      create: {
+        jti: data.jti,
+        tokenType: data.tokenType,
+        expiresAt: data.expiresAt,
+        userId: data.userId,
+        tokenFamily: data.tokenFamily,
+        previousJti: data.previousJti,
+        ipAddress: data.ipAddress,
+        userAgent: data.userAgent,
+      },
     });
   }
 

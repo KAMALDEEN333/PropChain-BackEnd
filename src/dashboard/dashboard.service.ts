@@ -198,8 +198,8 @@ export class DashboardService {
         state: prop.state,
         price: prop.price,
         propertyType: prop.propertyType,
-        bedrooms: prop.bedrooms,
-        bathrooms: prop.bathrooms,
+        bedrooms: prop.bedrooms ?? undefined,
+        bathrooms: prop.bathrooms ?? undefined,
         reason: 'Recently listed popular property',
       }));
     }
@@ -213,7 +213,7 @@ export class DashboardService {
           AND: [
             { city: prop.city },
             { state: prop.state },
-            { price: { gte: prop.price.multiply(0.8), lte: prop.price.multiply(1.2) } },
+            { price: { gte: prop.price.times(0.8), lte: prop.price.times(1.2) } },
           ],
         })),
       },
@@ -229,8 +229,8 @@ export class DashboardService {
       state: prop.state,
       price: prop.price,
       propertyType: prop.propertyType,
-      bedrooms: prop.bedrooms,
-      bathrooms: prop.bathrooms,
+      bedrooms: prop.bedrooms ?? undefined,
+      bathrooms: prop.bathrooms ?? undefined,
       reason: `Similar to properties in ${prop.city}, ${prop.state}`,
     }));
   }
